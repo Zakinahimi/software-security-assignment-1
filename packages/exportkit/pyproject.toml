@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "exportkit"
+version = "1.0.0"
+description = "Benign export-formatting helper for the Research Workspace Processing Service (the assignment's required external dependency)."
+requires-python = ">=3.9"
+readme = "README.md"
+license = { text = "MIT" }
+
+[tool.setuptools.packages.find]
+include = ["exportkit*"]
