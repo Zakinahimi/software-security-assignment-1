@@ -49,8 +49,8 @@ User (CLI / curl) ──▶ Application API (:5001) ──▶ Resource Service (
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-dev.txt          # shared dev/test tooling
-pip install -e packages/exportkit            # install the external dependency (benign build)
+pip install -r requirements-dev.txt          # shared dev/test tooling (pytest, ruff, pip-audit, requests)
+pip install packages/exportkit               # install the external dependency (benign build)
 for svc in application-api resource-service processing-service; do
   pip install -r services/$svc/requirements.txt
 done
@@ -77,32 +77,85 @@ python scripts/client.py list bob                 # bob cannot see alice's datas
 python scripts/client.py admin-list admin          # admin sees everyone's datasets
 ```
 
-A ready-to-import Postman/Insomnia-style collection is at `scripts/api-collection.json`, and plain
-curl examples are in `docs/ARCHITECTURE.md`.
+A ready-to-import Postman/Insomnia-style collection is at `scripts/api-collection.json`. Plain
+curl equivalent of the same flow:
+
+```bash
+TOKEN=$(curl -s -X POST localhost:5001/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"Alice#Pass1"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+
+curl -s -X POST localhost:5001/datasets -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"name":"curl-demo","payload":{"k":"v"}}'
+
+curl -s localhost:5001/datasets -H "Authorization: Bearer $TOKEN"
+curl -s -X POST localhost:5001/datasets/1/export -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"format":"csv"}'
+```
 
 ### 4. Run the tests
 
+Each service's unit/security tests must be run from within that service's own directory (their
+`conftest.py` imports each service's `app.py` as the top-level module `app`, so running them all
+from one `pytest` invocation at the repo root would make the second and third `import app`s reuse
+the first service's cached module instead of their own):
+
 ```bash
-pytest -q                      # unit + functional tests per service
-pytest -q tests/               # cross-service integration + the V1–V4 security tests
+for svc in resource-service application-api processing-service; do
+  (cd services/$svc && python -m pytest -q)         # 12 / 11 / 10 tests respectively
+done
 ```
 
-### 5. Run everything in Docker (fresh environment, matches what Jenkins does)
+The root-level `tests/` suite is cross-service integration + the V1–V4 authorization regression
+tests, run against three **real, running** instances of the services (either from step 2/5, or the
+docker-compose stack):
+
+```bash
+pytest -q tests/
+```
+
+### 5. Run everything in Docker (fresh environment — what Jenkins does)
 
 ```bash
 docker compose up --build -d
-docker compose run --rm test-runner pytest -q
+docker compose --profile test run --rm test-runner   # runs tests/ against the real containers,
+                                                       # writes reports/e2e-results.xml
 docker compose down -v
 ```
 
-### 6. Build and verify the external packages, and run the supply-chain experiment
+### 6. Verify the supply-chain integrity gate and run the attack experiment
+
+The two wheels used below (`packages/exportkit/dist/*.whl`, `packages/exportkit-malicious/dist/*.whl`)
+are committed to the repo so their digests are stable and reviewable, exactly matching
+`manifest/approved_packages.json`:
 
 ```bash
-./scripts/build_packages.sh                 # builds benign + malicious exportkit wheels
-python scripts/verify_manifest.py packages/exportkit/dist/*.whl      # passes (approved digest)
-python scripts/verify_manifest.py packages/exportkit-malicious/dist/*.whl  # fails: digest mismatch
-pytest -q tests/test_supply_chain.py -v
+python scripts/verify_manifest.py packages/exportkit/dist/*.whl            # APPROVED
+python scripts/verify_manifest.py packages/exportkit-malicious/dist/*.whl  # REJECTED: digest mismatch
+(cd services/processing-service && python -m pytest -q -v tests/test_supply_chain.py)
 ```
+
+(`scripts/build_packages.sh` can regenerate fresh wheels if you want to re-run the attack with new
+bytes, but — as it documents — a fresh rebuild will *not* reproduce the same digest as the
+committed wheels, so you would need to re-approve the new benign digest in the manifest
+afterwards; it's not needed just to see the gate work.)
+
+### 7. Static analysis and dependency audit (what the Jenkins pipeline's gate runs)
+
+```bash
+ruff check services packages scripts tests                              # clean
+for svc in resource-service application-api processing-service; do
+  pip-audit -r services/$svc/requirements.txt                           # "No known vulnerabilities found"
+done
+```
+
+## CI/CD
+
+`Jenkinsfile` runs on every push/PR: build & install → static analysis (`ruff`) → dependency
+analysis (`pip-audit`) → supply-chain integrity gate (`scripts/verify_manifest.py`) → per-service
+unit tests → a fresh docker-compose environment running the functional/authorization test suite.
+It fails the build on any failing test, any pip-audit finding, or an unexpected integrity-gate
+result, and archives all reports under `reports/` as Jenkins artifacts.
 
 ## Repository contents checklist (per the assignment's Submission section)
 
