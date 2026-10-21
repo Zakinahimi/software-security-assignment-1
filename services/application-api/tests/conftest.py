@@ -8,7 +8,6 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import app as api_app  # noqa: E402
-import security  # noqa: E402
 import users  # noqa: E402
 
 

@@ -17,7 +17,6 @@ Token claims used (see docs/ARCHITECTURE.md for the full scheme):
 from __future__ import annotations
 
 import os
-import time
 from functools import wraps
 from typing import Any
 

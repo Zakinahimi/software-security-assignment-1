@@ -11,7 +11,6 @@ from conftest import (
     PROCESSING_SERVICE_URL,
     RESOURCE_SERVICE_URL,
     auth_header,
-    login,
     mint_raw_token,
 )
 
