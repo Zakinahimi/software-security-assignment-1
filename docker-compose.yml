@@ -1,0 +1,75 @@
+x-jwt-secret: &jwt-secret
+  RESEARCH_WORKSPACE_JWT_SECRET: "dev-only-shared-secret-change-me-32bytes!!"
+
+services:
+  resource-service:
+    build:
+      context: .
+      dockerfile: services/resource-service/Dockerfile
+    environment:
+      <<: *jwt-secret
+    ports:
+      - "5002:5002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  processing-service:
+    build:
+      context: .
+      dockerfile: services/processing-service/Dockerfile
+    environment:
+      <<: *jwt-secret
+      RESOURCE_SERVICE_URL: "http://resource-service:5002"
+    ports:
+      - "5003:5003"
+    depends_on:
+      resource-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5003/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  application-api:
+    build:
+      context: .
+      dockerfile: services/application-api/Dockerfile
+    environment:
+      <<: *jwt-secret
+      RESOURCE_SERVICE_URL: "http://resource-service:5002"
+      PROCESSING_SERVICE_URL: "http://processing-service:5003"
+    ports:
+      - "5001:5001"
+    depends_on:
+      resource-service:
+        condition: service_healthy
+      processing-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # Fresh, isolated test environment: runs the cross-service integration + authorization/security
+  # test suite (tests/) against the three real, networked containers above. This is what the
+  # Jenkins pipeline's "Testing" stage invokes (see Jenkinsfile).
+  test-runner:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile
+    environment:
+      <<: *jwt-secret
+      APPLICATION_API_URL: "http://application-api:5001"
+      RESOURCE_SERVICE_URL: "http://resource-service:5002"
+      PROCESSING_SERVICE_URL: "http://processing-service:5003"
+    depends_on:
+      application-api:
+        condition: service_healthy
+    volumes:
+      - ./reports:/reports
+    profiles: ["test"]

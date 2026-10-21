@@ -1,0 +1,114 @@
+{
+  "info": {
+    "name": "Research Workspace — Application API",
+    "description": "Import into Postman/Insomnia. Run 'Login as alice' first (sets {{alice_token}} via its test script), then the rest. See README.md for the equivalent curl/CLI commands.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:5001" },
+    { "key": "alice_token", "value": "" },
+    { "key": "bob_token", "value": "" },
+    { "key": "admin_token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Login as alice",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{base_url}}/auth/login",
+        "body": { "mode": "raw", "raw": "{\"username\": \"alice\", \"password\": \"Alice#Pass1\"}" }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.collectionVariables.set('alice_token', pm.response.json().access_token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login as bob",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{base_url}}/auth/login",
+        "body": { "mode": "raw", "raw": "{\"username\": \"bob\", \"password\": \"Bob#Pass1\"}" }
+      },
+      "event": [
+        { "listen": "test", "script": { "exec": ["pm.collectionVariables.set('bob_token', pm.response.json().access_token);"] } }
+      ]
+    },
+    {
+      "name": "Login as admin",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{base_url}}/auth/login",
+        "body": { "mode": "raw", "raw": "{\"username\": \"admin\", \"password\": \"Admin#Pass1\"}" }
+      },
+      "event": [
+        { "listen": "test", "script": { "exec": ["pm.collectionVariables.set('admin_token', pm.response.json().access_token);"] } }
+      ]
+    },
+    {
+      "name": "F1: alice uploads a dataset",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{alice_token}}" }
+        ],
+        "url": "{{base_url}}/datasets",
+        "body": { "mode": "raw", "raw": "{\"name\": \"postman-demo\", \"payload\": {\"temp_c\": 21.5}}" }
+      }
+    },
+    {
+      "name": "F2: alice lists her own datasets",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{alice_token}}" }],
+        "url": "{{base_url}}/datasets"
+      }
+    },
+    {
+      "name": "V1 regression: bob tries dataset id 1 (alice's) — expect 403",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{bob_token}}" }],
+        "url": "{{base_url}}/datasets/1"
+      }
+    },
+    {
+      "name": "F3: alice exports dataset 1 (all three components)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{alice_token}}" }
+        ],
+        "url": "{{base_url}}/datasets/1/export",
+        "body": { "mode": "raw", "raw": "{\"format\": \"csv\"}" }
+      }
+    },
+    {
+      "name": "F4: admin lists everyone's datasets",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+        "url": "{{base_url}}/datasets?all=true"
+      }
+    },
+    {
+      "name": "F4: bob tries admin delete — expect 403",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{bob_token}}" }],
+        "url": "{{base_url}}/datasets/1"
+      }
+    }
+  ]
+}
