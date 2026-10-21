@@ -1,0 +1,6 @@
+# The assignment's required "external dependency" package. Deliberately NOT installed via a
+# plain `pip install -r` of this file in normal dev/CI — it is installed from an approved,
+# manifest-checked wheel (see manifest/approved_packages.json and scripts/verify_manifest.py),
+# so that the controlled supply-chain experiment has a real integrity gate to attack and defend.
+# This file exists purely to document the pinned version that is expected to be installed.
+exportkit==1.0.0
