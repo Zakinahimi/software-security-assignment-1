@@ -134,18 +134,17 @@ def get_export(export_id: int) -> dict[str, Any] | None:
 
 
 def search_datasets(owner: str, query: str) -> list[dict[str, Any]]:
-    """Search the caller's own datasets by (substring of) name — the ``owner`` restriction is
-    what is supposed to enforce that a non-admin caller only ever sees their own rows.
+    """Search the caller's own datasets by (substring of) name — the ``owner`` restriction
+    enforces that a non-admin caller only ever sees their own rows.
 
-    NOTE (V3, planted on purpose — see docs/THREAT_MODEL.md): ``owner`` is bound as a parameter
-    correctly, but ``query`` is concatenated directly into the SQL string. CWE-89 SQL Injection: a
-    crafted ``query`` such as ``' OR '1'='1' -- `` changes the WHERE clause's structure so that the
-    ``owner = ?`` restriction is effectively OR'd away, letting any authenticated user read every
-    other user's dataset names/payloads through this endpoint — a SQL-injection-driven
-    authorization bypass, not just a generic data leak.
+    V3 FIX (was CWE-89 SQL Injection, planted in d8e9e2a): both ``owner`` and the LIKE pattern
+    built from ``query`` are now bound as parameters, never concatenated into the SQL string, so
+    user input cannot change the query's structure regardless of what characters it contains.
     """
     conn = get_conn()
-    sql = "SELECT * FROM datasets WHERE owner = ? AND name LIKE '%" + query + "%'"
-    rows = conn.execute(sql, (owner,)).fetchall()
+    like_pattern = f"%{query}%"
+    rows = conn.execute(
+        "SELECT * FROM datasets WHERE owner = ? AND name LIKE ?", (owner, like_pattern)
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]

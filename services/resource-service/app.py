@@ -60,11 +60,13 @@ def get_dataset(dataset_id: int):
     record = db.get_dataset(dataset_id)
     if record is None:
         return jsonify(error="not found"), 404
-    # --- V1 (planted on purpose, see docs/THREAT_MODEL.md): this endpoint checks that the caller
-    # holds the "dataset:read" scope, but never checks that `record["owner"]` actually matches the
-    # caller's identity (`g.user["sub"]`). Any authenticated user — not just an admin — can read
-    # any other user's dataset simply by guessing/incrementing the numeric id (CWE-639 Insecure
-    # Direct Object Reference). The ownership check that list_datasets() applies is missing here.
+    # V1 FIX (was CWE-639 IDOR, planted in d8e9e2a): scope alone ("dataset:read") says the caller
+    # may read *some* dataset; it says nothing about *which* one. Complete mediation requires this
+    # endpoint to independently check ownership on every call, the same way list_datasets() and
+    # save_export()/get_export() already do, rather than trusting that holding the right scope is
+    # sufficient. Fail-safe default: deny unless owner matches or the caller is an admin.
+    if record["owner"] != g.user["sub"] and g.user.get("role") != "admin":
+        return jsonify(error="forbidden: dataset does not belong to this token's identity"), 403
     return jsonify(record)
 
 
