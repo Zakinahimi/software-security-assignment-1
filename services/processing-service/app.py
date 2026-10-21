@@ -42,16 +42,19 @@ def run_export_job():
     if fmt not in FORMATTERS:
         return jsonify(error=f"unsupported format '{fmt}'"), 400
 
-    # --- V4 (planted on purpose, see docs/THREAT_MODEL.md): the job's target dataset is taken
-    # straight from the request BODY instead of from `g.user["resource"]` — the dataset id the
-    # Application API actually bound into this specific, signed token when it authorized this
-    # job. This service was given a broad "worker" credential (see security.py) to fetch whatever
-    # data a job needs; the only thing standing between that broad power and a confused-deputy
-    # attack is checking that the job's parameters match what was actually authorized, and that
-    # check is missing here. A caller holding ANY valid job:export token for THEIR OWN dataset can
-    # call this endpoint directly (it does not have to go through the Application API) with a
-    # different dataset_id in the body and have this service fetch and export someone else's
-    # data using its own elevated worker credentials. CWE-441 Unintended Proxy/Confused Deputy.
+    # V4 FIX (was CWE-441 Confused Deputy, planted in 9a3fc5b): this service holds a broad
+    # "worker" credential (see security.py) so it can fetch whatever data a job legitimately
+    # needs — but that power must only ever be used for the exact job the Application API actually
+    # authorized. `g.user["resource"]` is the dataset id bound into THIS specific, signed token;
+    # the request body is just job parameters supplied by whoever is calling this endpoint, which
+    # is not necessarily the Application API (nothing stops a client from calling this service
+    # directly). Fail-safe default: reject unless the token carries a resource claim and it
+    # matches the dataset_id actually being requested — never let the body silently override what
+    # was authorized.
+    authorized_dataset_id = g.user.get("resource")
+    if authorized_dataset_id is None or int(authorized_dataset_id) != int(dataset_id):
+        return jsonify(error="forbidden: this token does not authorize a job on this dataset"), 403
+
     fetch_token = security.mint_resource_service_worker_token(scope=["dataset:read"], resource=dataset_id)
     resp = requests.get(
         f"{RESOURCE_SERVICE_URL}/datasets/{dataset_id}",
