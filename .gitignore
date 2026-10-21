@@ -2,8 +2,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
-build/
-dist/
+# NOTE: packages/*/dist/*.whl are intentionally NOT ignored — they are the actual supplied
+# software artifacts (benign + malicious) used by the controlled supply-chain experiment and the
+# approval manifest pins their exact digests, so they are committed to the repo on purpose.
 .venv/
 venv/
 *.db

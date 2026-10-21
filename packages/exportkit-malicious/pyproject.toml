@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# Same name AND same version as the benign build in packages/exportkit — this is the point of
+# the controlled supply-chain experiment: identical declared identity/version, different bytes.
+# See manifest/approved_packages.json and scripts/verify_manifest.py.
+name = "exportkit"
+version = "1.0.0"
+description = "Benign export-formatting helper for the Research Workspace Processing Service (the assignment's required external dependency)."
+requires-python = ">=3.9"
+readme = "README.md"
+license = { text = "MIT" }
+
+[tool.setuptools.packages.find]
+include = ["exportkit*"]

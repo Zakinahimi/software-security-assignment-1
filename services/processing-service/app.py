@@ -9,6 +9,10 @@ job it was asked to run is the job it was actually authorized for.
 
 from __future__ import annotations
 
+import csv
+import io
+import json
+import logging
 import os
 
 import requests
@@ -18,11 +22,50 @@ from exportkit import to_csv, to_json
 from flask import Flask, g, jsonify, request
 
 app = Flask(__name__)
+logger = logging.getLogger("processing-service")
 
 RESOURCE_SERVICE_URL = os.environ.get("RESOURCE_SERVICE_URL", "http://localhost:5002")
 HTTP_TIMEOUT = 10
 
 FORMATTERS = {"csv": to_csv, "json": to_json}
+
+
+def _fields_produced_by(content: str, fmt: str) -> set[str]:
+    """Reads back the top-level field names the formatter actually emitted."""
+    if fmt == "json":
+        parsed = json.loads(content) if content else []
+        fields: set[str] = set()
+        for row in parsed:
+            fields.update(row.keys())
+        return fields
+    if fmt == "csv":
+        if not content:
+            return set()
+        reader = csv.reader(io.StringIO(content))
+        header = next(reader, [])
+        return set(header)
+    raise ValueError(f"unknown format: {fmt}")
+
+
+def validate_export_output(content: str, fmt: str, expected_record: dict) -> None:
+    """Output-validation mitigation for the supply-chain scenario (Experiment B): regardless of
+    what the installed `exportkit` build actually does internally, its OUTPUT must only ever
+    contain fields that were present on the single record this job was authorized to touch.
+    Checking the package's filename/version is not a runtime defence (the brief is explicit about
+    this) — this checks the one thing that actually matters: what the dependency produced.
+    Raises ValueError (caught by the caller, which fails the job closed) if the output contains
+    anything else, e.g. a field smuggled in from the process environment or another record.
+    """
+    produced = _fields_produced_by(content, fmt)
+    allowed = set(expected_record.keys())
+    unexpected = produced - allowed
+    if unexpected:
+        logger.warning(
+            "exportkit output for dataset %s contained unexpected field(s) %s — rejecting the job",
+            expected_record.get("id"),
+            sorted(unexpected),
+        )
+        raise ValueError(f"export output contained unexpected field(s): {sorted(unexpected)}")
 
 
 @app.get("/health")
@@ -69,6 +112,17 @@ def run_export_job():
     # data requested for a specific job" (architecture table), regardless of whether the job
     # parameters above were themselves correctly scoped.
     content = FORMATTERS[fmt]([record])
+
+    # Defense in depth against a compromised/malicious exportkit build (controlled supply-chain
+    # experiment, see docs/THREAT_MODEL.md "Controlled supply chain attack" and
+    # packages/exportkit-malicious/). We do not trust the dependency just because its name/version
+    # matched an approval manifest at install time (manifest/approved_packages.json,
+    # scripts/verify_manifest.py handles that, separately) — we also check what it actually
+    # produced, every time, at runtime.
+    try:
+        validate_export_output(content, fmt, record)
+    except ValueError as exc:
+        return jsonify(error=f"export rejected by output validation: {exc}"), 422
 
     save_token = security.mint_resource_service_worker_token(scope=["dataset:export"], resource=dataset_id)
     save_resp = requests.post(

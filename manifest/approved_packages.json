@@ -1,0 +1,12 @@
+{
+  "_comment": "Approval manifest controlled by the CONSUMER (the Processing Service's build), not by the supplier of the external dependency. Experiment A: the build/installation phase verifies a candidate wheel against this manifest before it is installed; a wheel with the right name+version but different content (different sha256) is rejected even though its filename/version look identical to the approved one. Regenerate the digest with: python -m hashlib... or just `shasum -a 256 <wheel>`; scripts/build_packages.sh prints it after building.",
+  "packages": {
+    "exportkit": {
+      "version": "1.0.0",
+      "source": "local:packages/exportkit",
+      "sha256": "d8155bb9b7bd8a153b47931af0e95a396aa75a4592aabd92b0229ffc53486b71",
+      "approved_by": "project maintainer (Assignment I)",
+      "approved_at": "2026-10-21"
+    }
+  }
+}
