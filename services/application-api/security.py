@@ -67,17 +67,21 @@ def mint_service_token(sub: str, role: str, audience: str, scope: list[str], res
     return jwt.encode(claims, JWT_SECRET, algorithm="HS256")
 
 
-def decode_session_token_UNSAFE(token: str) -> dict[str, Any]:
-    """V2 (planted on purpose — see docs/THREAT_MODEL.md): decodes the session token WITHOUT
-    verifying its signature (`verify_signature: False`). CWE-347 Improper Verification of
-    Cryptographic Signature. Any client can craft an arbitrary, unsigned-but-well-formed JWT
-    claiming `role: "admin"` / any `sub`, and every endpoint below that relies on this function —
-    i.e. every protected endpoint in the Application API — will treat it as authentic. Because the
-    Application API then uses that (forged) identity to *mint a genuinely, correctly signed*
-    downstream service token via mint_service_token(), the forgery propagates as real authority
-    into the Resource Service and Processing Service, even though those services verify
-    signatures correctly themselves."""
-    return jwt.decode(token, options={"verify_signature": False})
+def decode_session_token(token: str) -> dict[str, Any]:
+    """V2 FIX (was CWE-347 Improper Verification of Cryptographic Signature, planted in 64bab5e):
+    the session token's signature, algorithm, audience and expiry are now all properly verified
+    before any claim in it is trusted. This matters more here than it would in a standalone
+    service, because every downstream service token this API mints (mint_service_token, above)
+    is derived from `sub`/`role` taken from this decode — a forged session token would otherwise
+    have propagated as genuine, correctly-signed authority into the Resource Service and
+    Processing Service."""
+    return jwt.decode(
+        token,
+        JWT_SECRET,
+        algorithms=["HS256"],  # pinned explicitly — never accept "none" or let the caller pick
+        audience=SERVICE_NAME,
+        options={"require": ["exp", "iat", "sub", "aud"]},
+    )
 
 
 def require_session_auth(fn):
@@ -88,14 +92,13 @@ def require_session_auth(fn):
             return jsonify(error="missing bearer token"), 401
         token = header[len("Bearer ") :]
         try:
-            claims = decode_session_token_UNSAFE(token)
-        except Exception as exc:  # noqa: BLE001 - malformed token, not a trust decision
-            return jsonify(error=f"malformed token: {exc}"), 401
-
-        if claims.get("exp", 0) < time.time():
+            claims = decode_session_token(token)
+        except jwt.ExpiredSignatureError:
             return jsonify(error="token expired"), 401
-        if "sub" not in claims or "role" not in claims:
-            return jsonify(error="malformed token"), 401
+        except jwt.InvalidAudienceError:
+            return jsonify(error=f"token not valid for {SERVICE_NAME}"), 403
+        except jwt.InvalidTokenError as exc:
+            return jsonify(error=f"invalid token: {exc}"), 401
 
         g.user = claims
         return fn(*args, **kwargs)
