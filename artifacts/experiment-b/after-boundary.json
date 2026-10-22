@@ -1,0 +1,27 @@
+{
+  "export_http_status": 422,
+  "export_response_body": {
+    "error": "export rejected by output validation: export output contained unexpected field(s): ['_leaked_secret']"
+  },
+  "secret_in_export_response": false,
+  "note": "export refused; nothing was stored for this job",
+  "alice_dataset_count": 3,
+  "what_the_processing_service_container_can_reach": {
+    "uid": 999,
+    "env_var_names": [
+      "RESEARCH_WORKSPACE_JWT_SECRET",
+      "RESOURCE_SERVICE_URL"
+    ],
+    "jwt_secret_in_process_environment": true,
+    "resource_service_database_file_visible": [],
+    "non_pseudo_mounts_(volumes_and_bind_mounts)": [
+      "ext4 /etc/resolv.conf",
+      "ext4 /etc/hostname",
+      "ext4 /etc/hosts"
+    ],
+    "resource_service_health_http": 200,
+    "resource_service_datasets_without_token_http": 401,
+    "application_api_health_http": 200,
+    "outbound_internet_tcp_1.1.1.1:443": true
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "before-boundary: the attempted leak succeeded (evidence preserved)": true,
+  "after-boundary: the leak is blocked (HTTP 422, secret not in response)": true,
+  "benign-control: the legitimate job still completes (HTTP 201, no secret)": true
+}
