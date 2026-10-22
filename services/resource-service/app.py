@@ -7,6 +7,8 @@ Service), not just requests arriving straight from a user via the Application AP
 
 from __future__ import annotations
 
+import json
+
 import db
 import security
 from flask import Flask, g, jsonify, request
@@ -30,7 +32,8 @@ def create_dataset():
     # Fail-safe default / least privilege: the owner is ALWAYS the authenticated caller's
     # identity from the verified token, never a client-supplied field — a client cannot create a
     # dataset "as" someone else no matter what the request body says.
-    record = db.create_dataset(owner=g.user["sub"], name=name, payload=str(payload))
+    stored_payload = payload if isinstance(payload, str) else json.dumps(payload)
+    record = db.create_dataset(owner=g.user["sub"], name=name, payload=stored_payload)
     return jsonify(record), 201
 
 

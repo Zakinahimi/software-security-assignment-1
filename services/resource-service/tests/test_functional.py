@@ -82,3 +82,14 @@ def test_token_bound_to_one_dataset_cannot_save_an_export_for_another(client):
     assert client.post("/exports", json=body, headers=auth_header(token)).status_code == 403
     body["dataset_id"] = 1
     assert client.post("/exports", json=body, headers=auth_header(token)).status_code == 201
+
+
+def test_dataset_payload_is_stored_as_json_text(client):
+    import json
+
+    token = make_token("alice", role="user")
+    resp = client.post(
+        "/datasets", json={"name": "json-payload", "payload": {"ph": 7.1, "ok": True}}, headers=auth_header(token)
+    )
+    assert resp.status_code == 201
+    assert json.loads(resp.get_json()["payload"]) == {"ph": 7.1, "ok": True}
