@@ -11,7 +11,6 @@ Usage:
     python scripts/client.py upload <username> <name> <payload-json>
     python scripts/client.py list <username> [--all]
     python scripts/client.py get <username> <dataset_id>
-    python scripts/client.py search <username> <query>
     python scripts/client.py export <username> <dataset_id> [csv|json]
     python scripts/client.py get-export <username> <export_id>
     python scripts/client.py admin-list <username>
@@ -91,13 +90,6 @@ def main() -> None:
     elif cmd == "get":
         username, dataset_id = args[0], args[1]
         resp = requests.get(f"{APPLICATION_API_URL}/datasets/{dataset_id}", headers=auth_headers(username))
-        pretty(resp)
-
-    elif cmd == "search":
-        username, query = args[0], args[1]
-        resp = requests.get(
-            f"{APPLICATION_API_URL}/datasets/search", params={"q": query}, headers=auth_headers(username)
-        )
         pretty(resp)
 
     elif cmd == "export":
