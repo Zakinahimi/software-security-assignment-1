@@ -7,7 +7,7 @@ over HTTP, JWT-based authentication/authorization across component boundaries, a
 helper package, four intentionally planted-then-fixed vulnerabilities, a controlled supply-chain
 attack experiment, and a Jenkins CI/CD gate.
 
-Full write-up: `docs/report/Assignment_I_Report.docx`. Architecture: `docs/ARCHITECTURE.md`.
+Step-by-step test guide: `docs/TESTING_GUIDE.md`. Full write-up: `docs/report/Assignment_I_Report.docx`. Architecture: `docs/ARCHITECTURE.md`.
 Threat model: `docs/THREAT_MODEL.md`. Access control matrix: `docs/ACCESS_CONTROL_MATRIX.md`.
 SSDLC plan (committed first, before feature code): `docs/SSDLC_PLAN.md`. AI usage declaration:
 `docs/AI_USE_DECLARATION.md`.
@@ -103,7 +103,7 @@ the first service's cached module instead of their own):
 
 ```bash
 for svc in resource-service application-api processing-service; do
-  (cd services/$svc && python -m pytest -q)         # 15 / 11 / 13 tests respectively
+  (cd services/$svc && python -m pytest -q)         # 16 / 11 / 13 tests respectively
 done
 ```
 
@@ -118,9 +118,12 @@ pytest -q tests/                                    # 8 end-to-end tests
 ### 5. Run everything in Docker (fresh environment — what Jenkins does)
 
 ```bash
-docker compose up --build -d
-docker compose --profile test run --rm test-runner   # runs tests/ against the real containers,
-                                                       # writes reports/e2e-results.xml
+mkdir -p reports
+docker compose up --build -d resource-service processing-service application-api
+docker compose --profile test build test-runner
+docker compose --profile test run --name e2e-runner test-runner     # runs tests/ against the real containers
+docker cp e2e-runner:/reports/e2e-results.xml reports/e2e-results.xml   # saves the JUnit XML
+docker rm e2e-runner
 docker compose down -v
 ```
 
@@ -135,6 +138,25 @@ python scripts/verify_manifest.py packages/exportkit/dist/*.whl            # APP
 python scripts/verify_manifest.py packages/exportkit-malicious/dist/*.whl  # REJECTED: digest mismatch
 (cd services/processing-service && python -m pytest -q -v tests/test_supply_chain.py)
 ```
+
+**Experiment B — an explicitly approved compromised update (needs Docker).** In an isolated
+docker-compose project (`docker-compose.experiment-b.yml`, host ports 6001-6003, own network) the
+script approves the malicious wheel's name, version and digest in a separate manifest
+(`manifest/experiment_b/approved_packages.json`, used by nothing else), builds the Processing Service
+with that wheel, runs the normal workflow (login → upload → export through the Application API)
+and records what happens in three phases, plus what the compromised container can reach:
+
+```bash
+python scripts/experiment_b.py       # ~3-5 minutes; writes artifacts/experiment-b/*.json
+```
+
+| Phase | Processing Service | Wheel | Expected |
+|---|---|---|---|
+| `before-boundary` | source of commit `0fca8b3` (before output validation existed) | malicious, approved | leak **succeeds**: the JWT secret is in the export and stored in the Resource Service (evidence preserved) |
+| `after-boundary` | current code (output validation) | malicious, approved | export refused with HTTP 422, nothing stored |
+| `benign-control` | current code | real benign wheel | export completes (HTTP 201), no secret |
+
+The script prints `PASS`/`FAIL` for each and exits non-zero if any phase behaves differently.
 
 (`scripts/build_packages.sh` can regenerate fresh wheels if you want to re-run the attack with new
 bytes, but — as it documents — a fresh rebuild will *not* reproduce the same digest as the
@@ -155,16 +177,18 @@ done
 `Jenkinsfile` runs on every push/PR: build & install → static analysis (`ruff`) → dependency
 analysis (`pip-audit`) → supply-chain integrity gate (`scripts/verify_manifest.py`) → per-service
 unit tests → a fresh docker-compose environment running the functional/authorization test suite.
+The Processing Service container (which runs third-party code) runs as a non-root user.
 It fails the build on any failing test, any ruff finding, any pip-audit finding (pip-audit has no
 severity threshold, so every finding blocks), a broken dependency set (`pip check`), or an
 unexpected integrity-gate result, and archives all reports under `reports/` as Jenkins artifacts.
 The wheel is verified against the manifest *before* it is installed (both in the Jenkins
 "Build & install" stage and in the Processing Service `Dockerfile`).
 
-Note: the `Jenkinsfile` has not been executed on a Jenkins server from this repository (no Jenkins
-instance was available); every command it runs was executed by hand with the results saved in
-`artifacts/` (see below). It is meant to be used as a Multibranch Pipeline job so that it runs on
-every push and pull request.
+Note: the `Jenkinsfile` has not been completed on a Jenkins server from this repository. Every
+command it runs was executed by hand (also in a fresh virtualenv) with the results saved in
+`artifacts/` (see below). Set it up as a Multibranch Pipeline job (branch + pull-request
+discovery and a webhook) so that it runs on every push and pull request; the job needs python3 and
+a docker CLI with the compose plugin on the agent, and the Timestamper and JUnit plugins.
 
 ## Saved test and analysis results (`artifacts/`)
 
@@ -172,7 +196,8 @@ Results of the last full run (the same commands the pipeline runs): per-service 
 (`unit-*.xml`), the end-to-end JUnit XML from the docker-compose stack (`e2e-results-docker.xml`),
 `ruff.txt`, `pip-audit-*.json`, `integrity-gate.txt` (benign wheel APPROVED, malicious wheel
 REJECTED) and `docker-build-malicious-wheel-rejected.txt` (the Processing Service image build
-refusing the malicious wheel). `reports/` is where a fresh run writes its output and is git-ignored.
+refusing the malicious wheel), and `experiment-b/` (the three phases of Experiment B and the access
+probe of the compromised container). `reports/` is where a fresh run writes its output and is git-ignored.
 
 ## Repository contents checklist (per the assignment's Submission section)
 
@@ -180,7 +205,7 @@ refusing the malicious wheel). `reports/` is where a fresh run writes its output
 - [x] Initial lifecycle plan committed before feature code, full git history kept (`docs/SSDLC_PLAN.md`, first commit)
 - [x] Architecture description, threat model, access-control matrix (`docs/ARCHITECTURE.md`, `docs/THREAT_MODEL.md`, `docs/ACCESS_CONTROL_MATRIX.md`)
 - [x] Jenkins pipeline definition (`Jenkinsfile`)
-- [x] Helper package + malicious version + approval manifest (`packages/exportkit*`, `manifest/approved_packages.json`)
+- [x] Helper package + malicious version + approval manifest (`packages/exportkit*`, `manifest/approved_packages.json`, Experiment B in `manifest/experiment_b/` and `scripts/experiment_b.py`)
 - [x] Written report (`docs/report/Assignment_I_Report.docx`)
 - [x] AI usage declaration (`docs/AI_USE_DECLARATION.md`, following the AU GAI declaration form)
 - [x] Saved test and analysis results (`artifacts/`)
