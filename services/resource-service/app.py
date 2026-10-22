@@ -57,6 +57,8 @@ def search_datasets():
 @app.get("/datasets/<int:dataset_id>")
 @security.require_scope("dataset:read")
 def get_dataset(dataset_id: int):
+    if not security.resource_claim_allows(g.user, dataset_id):
+        return jsonify(error="forbidden: token is bound to a different resource"), 403
     record = db.get_dataset(dataset_id)
     if record is None:
         return jsonify(error="not found"), 404
@@ -76,6 +78,8 @@ def delete_dataset(dataset_id: int):
     # Privileged action (F4): only a token carrying the "dataset:admin" scope reaches this point
     # at all (enforced by the decorator) — ordinary users are rejected before any DB access,
     # which is fail-safe defaults in action.
+    if not security.resource_claim_allows(g.user, dataset_id):
+        return jsonify(error="forbidden: token is bound to a different resource"), 403
     deleted = db.delete_dataset(dataset_id)
     if not deleted:
         return jsonify(error="not found"), 404
@@ -95,6 +99,8 @@ def save_export():
     content = body.get("content")
     if dataset_id is None or not fmt or content is None:
         return jsonify(error="dataset_id, format and content are required"), 400
+    if not security.resource_claim_allows(g.user, dataset_id):
+        return jsonify(error="forbidden: token is bound to a different resource"), 403
 
     record = db.get_dataset(dataset_id)
     if record is None:

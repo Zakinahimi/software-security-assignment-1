@@ -60,3 +60,25 @@ def test_admin_delete_requires_admin_scope(client):
     admin_token = make_token("admin", role="admin", scope=["dataset:admin"])
     resp = client.delete("/datasets/1", headers=auth_header(admin_token))
     assert resp.status_code == 200
+
+
+def test_token_bound_to_one_dataset_cannot_read_another(client):
+    """Authority is bound to ONE resource: alice owns datasets 1 and 2, but a token whose
+    `resource` claim is 1 must not authorize reading dataset 2."""
+    token = make_token("alice", role="user", scope=["dataset:read"], resource=1)
+    assert client.get("/datasets/1", headers=auth_header(token)).status_code == 200
+    assert client.get("/datasets/2", headers=auth_header(token)).status_code == 403
+
+
+def test_token_bound_to_one_dataset_cannot_delete_another(client):
+    token = make_token("admin", role="admin", scope=["dataset:admin"], resource=1)
+    assert client.delete("/datasets/2", headers=auth_header(token)).status_code == 403
+    assert client.delete("/datasets/1", headers=auth_header(token)).status_code == 200
+
+
+def test_token_bound_to_one_dataset_cannot_save_an_export_for_another(client):
+    token = make_token("alice", role="user", scope=["dataset:export"], resource=1)
+    body = {"dataset_id": 2, "format": "csv", "content": "x"}
+    assert client.post("/exports", json=body, headers=auth_header(token)).status_code == 403
+    body["dataset_id"] = 1
+    assert client.post("/exports", json=body, headers=auth_header(token)).status_code == 201

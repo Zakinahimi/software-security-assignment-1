@@ -60,6 +60,14 @@ def verify_token(token: str) -> dict[str, Any]:
     return claims
 
 
+def resource_claim_allows(claims: dict[str, Any], dataset_id: Any) -> bool:
+    """Binding of a token to ONE resource: if the token carries a `resource` claim, it authorizes
+    only that dataset id. A token without the claim is not narrowed to a single dataset (e.g. list
+    calls); ownership/role rules in app.py still apply to it."""
+    bound = claims.get("resource")
+    return bound is None or str(bound) == str(dataset_id)
+
+
 def require_scope(*required_scopes: str):
     """Decorator: require a valid token, bound to this service, with at least one of the given
     scopes. Fail-safe default: any missing/invalid/expired/wrong-audience/wrong-scope token is
