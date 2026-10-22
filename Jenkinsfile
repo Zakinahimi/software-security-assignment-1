@@ -5,10 +5,18 @@
 //   2. Start a fresh test environment (docker-compose) and run the functional and
 //      authorization/security test suite against it.
 //   3. Archive test and analysis results as Jenkins artifacts.
-// The build is configured to FAIL on: any failing test, any pip-audit finding of severity
-// medium-or-above on a direct dependency, and any supply-chain integrity-manifest mismatch for
-// the benign exportkit build (a mismatch there means the approved artifact itself is broken,
-// not — as with the malicious fixture — a working security gate).
+// The build is configured to FAIL (= findings that block a release) on:
+//   - any failing functional or authorization/security test (unit or end-to-end),
+//   - any ruff static-analysis finding,
+//   - any known vulnerability reported by pip-audit for a service's pinned dependencies
+//     (pip-audit has no severity threshold, so every finding blocks),
+//   - a broken dependency set (pip check), and
+//   - any supply-chain integrity-manifest mismatch for the benign exportkit wheel — the wheel is
+//     verified against manifest/approved_packages.json BEFORE it is installed, so an unapproved or
+//     tampered artifact never reaches the build. The malicious fixture is the control case and
+//     MUST be rejected.
+// Runs on every push / pull request when this repo is configured as a Multibranch Pipeline job
+// (branch + PR discovery with a webhook); pollSCM below is only a fallback for single-branch jobs.
 
 pipeline {
     agent any
@@ -16,6 +24,10 @@ pipeline {
     options {
         timestamps()
         disableConcurrentBuilds()
+    }
+
+    triggers {
+        pollSCM('H/2 * * * *')
     }
 
     environment {
@@ -32,10 +44,14 @@ pipeline {
                     . .venv/bin/activate
                     pip install --upgrade pip
                     pip install -r requirements-dev.txt
-                    pip install packages/exportkit
+                    # Experiment A: verify the external dependency against the consumer-held manifest
+                    # before installing it; a mismatch exits 1 and fails the build here.
+                    python scripts/verify_manifest.py packages/exportkit/dist/*.whl
+                    pip install --no-deps packages/exportkit/dist/*.whl
                     for svc in resource-service application-api processing-service; do
                         pip install -r services/$svc/requirements.txt
                     done
+                    pip check
                 '''
             }
         }
