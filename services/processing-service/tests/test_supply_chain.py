@@ -9,7 +9,10 @@ Nothing in app.py is edited to accommodate this: the malicious code enters purel
 """
 
 import importlib
+import importlib.util
 import sys
+import zipfile
+from pathlib import Path
 
 import pytest
 from conftest import auth_header, make_job_token
@@ -82,3 +85,49 @@ def test_legitimate_job_still_completes_with_the_benign_dependency(client, resou
 
     assert resp.status_code == 201
     assert len(resource_service) == 1
+
+
+# --- Experiment A: install-time integrity gate (scripts/verify_manifest.py + the manifest) ---
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _verify_manifest_module():
+    spec = importlib.util.spec_from_file_location("verify_manifest", REPO_ROOT / "scripts" / "verify_manifest.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _benign_wheel() -> Path:
+    return next((REPO_ROOT / "packages" / "exportkit" / "dist").glob("*.whl"))
+
+
+def test_integrity_gate_approves_the_approved_wheel():
+    ok, message = _verify_manifest_module().verify(_benign_wheel())
+    assert ok, message
+
+
+def test_integrity_gate_rejects_same_name_and_version_with_different_bytes(tmp_path):
+    """Replace the supplier artifact with different bytes while keeping the expected identity
+    (name + version in the wheel's METADATA) unchanged: the digest check must block it."""
+    benign = _benign_wheel()
+    tampered = tmp_path / benign.name
+    with zipfile.ZipFile(benign) as src, zipfile.ZipFile(tampered, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if item.filename == "exportkit/__init__.py":
+                data += b"\n# injected by a compromised supplier\n"
+            dst.writestr(item, data)
+
+    ok, message = _verify_manifest_module().verify(tampered)
+
+    assert not ok
+    assert "digest mismatch" in message
+
+
+def test_integrity_gate_rejects_the_malicious_fixture_wheel():
+    malicious = next((REPO_ROOT / "packages" / "exportkit-malicious" / "dist").glob("*.whl"))
+    ok, message = _verify_manifest_module().verify(malicious)
+    assert not ok
+    assert "digest mismatch" in message
