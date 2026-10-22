@@ -44,14 +44,17 @@ User (CLI / curl) ──▶ Application API (:5001) ──▶ Resource Service (
 
 ## Quickstart
 
+The code blocks contain no inline `#` comments, so they can be pasted into zsh as they are. The
+expected result of every step is listed in `docs/TESTING_GUIDE.md`.
+
 ### 1. Set up a virtualenv and install everything
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-dev.txt          # shared dev/test tooling (pytest, ruff, pip-audit, requests)
-python scripts/verify_manifest.py packages/exportkit/dist/*.whl   # integrity gate: must print APPROVED
-pip install --no-deps packages/exportkit/dist/*.whl               # install the external dependency (benign wheel)
+pip install -r requirements-dev.txt
+python scripts/verify_manifest.py packages/exportkit/dist/*.whl
+pip install --no-deps packages/exportkit/dist/*.whl
 for svc in application-api resource-service processing-service; do
   pip install -r services/$svc/requirements.txt
 done
@@ -60,8 +63,8 @@ done
 ### 2. Seed and run the three services (each in its own terminal, or see `scripts/run_dev.sh`)
 
 ```bash
-python scripts/seed.py        # (re)creates both SQLite stores with the seeded accounts/datasets
-./scripts/run_dev.sh          # starts all three; each service also re-seeds its own store on start
+python scripts/seed.py
+./scripts/run_dev.sh
 ```
 
 This seeds three accounts: `alice` / `Alice#Pass1` (user), `bob` / `Bob#Pass1` (user),
@@ -74,8 +77,8 @@ python scripts/client.py login alice Alice#Pass1
 python scripts/client.py upload alice "lab-results" '{"ph": 7.1, "temp_c": 36.6}'
 python scripts/client.py list alice
 python scripts/client.py export alice <dataset_id>
-python scripts/client.py list bob                 # bob cannot see alice's datasets
-python scripts/client.py admin-list admin          # admin sees everyone's datasets
+python scripts/client.py list bob
+python scripts/client.py admin-list admin
 ```
 
 A ready-to-import Postman/Insomnia-style collection is at `scripts/api-collection.json`. Plain
@@ -103,7 +106,7 @@ the first service's cached module instead of their own):
 
 ```bash
 for svc in resource-service application-api processing-service; do
-  (cd services/$svc && python -m pytest -q)         # 16 / 11 / 13 tests respectively
+  (cd services/$svc && python -m pytest -q)
 done
 ```
 
@@ -112,7 +115,7 @@ tests, run against three **real, running** instances of the services (either fro
 docker-compose stack):
 
 ```bash
-pytest -q tests/                                    # 8 end-to-end tests
+pytest -q tests/
 ```
 
 ### 5. Run everything in Docker (fresh environment — what Jenkins does)
@@ -121,8 +124,8 @@ pytest -q tests/                                    # 8 end-to-end tests
 mkdir -p reports
 docker compose up --build -d resource-service processing-service application-api
 docker compose --profile test build test-runner
-docker compose --profile test run --name e2e-runner test-runner     # runs tests/ against the real containers
-docker cp e2e-runner:/reports/e2e-results.xml reports/e2e-results.xml   # saves the JUnit XML
+docker compose --profile test run --name e2e-runner test-runner
+docker cp e2e-runner:/reports/e2e-results.xml reports/e2e-results.xml
 docker rm e2e-runner
 docker compose down -v
 ```
@@ -134,8 +137,8 @@ are committed to the repo so their digests are stable and reviewable, exactly ma
 `manifest/approved_packages.json`:
 
 ```bash
-python scripts/verify_manifest.py packages/exportkit/dist/*.whl            # APPROVED
-python scripts/verify_manifest.py packages/exportkit-malicious/dist/*.whl  # REJECTED: digest mismatch
+python scripts/verify_manifest.py packages/exportkit/dist/*.whl
+python scripts/verify_manifest.py packages/exportkit-malicious/dist/*.whl
 (cd services/processing-service && python -m pytest -q -v tests/test_supply_chain.py)
 ```
 
@@ -147,7 +150,7 @@ with that wheel, runs the normal workflow (login → upload → export through t
 and records what happens in three phases, plus what the compromised container can reach:
 
 ```bash
-python scripts/experiment_b.py       # ~3-5 minutes; writes artifacts/experiment-b/*.json
+python scripts/experiment_b.py
 ```
 
 | Phase | Processing Service | Wheel | Expected |
@@ -166,10 +169,11 @@ afterwards; it's not needed just to see the gate work.)
 ### 7. Static analysis and dependency audit (what the Jenkins pipeline's gate runs)
 
 ```bash
-ruff check services packages scripts tests                              # clean
+ruff check services packages scripts tests
 for svc in resource-service application-api processing-service; do
-  pip-audit -r services/$svc/requirements.txt                           # "No known vulnerabilities found"
+  pip-audit -r services/$svc/requirements.txt
 done
+pip-audit -r requirements-dev.txt
 ```
 
 ## CI/CD
