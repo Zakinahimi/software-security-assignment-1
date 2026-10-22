@@ -132,3 +132,8 @@ differs, it is recorded here rather than rewritten into the plan:
 - **Resource-claim enforcement.** The `resource` token claim was first checked only by the
   Processing Service (V4 fix). The Resource Service now also rejects a token whose `resource`
   claim differs from the dataset being read, deleted or exported.
+- **Experiment B.** The plan only listed the supply-chain exercise as a gate. Experiment B was
+  later run as an isolated docker-compose scenario (`scripts/experiment_b.py`): the malicious wheel
+  is approved in a separate manifest, the normal workflow is run before and after the output
+  validation boundary and with the benign wheel, and the compromised container is probed. The
+  probe showed the container ran as root, so a non-root user was added to its Dockerfile.

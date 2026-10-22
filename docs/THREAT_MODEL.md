@@ -177,39 +177,47 @@ See `packages/exportkit-malicious/README.md` and the "External dependency" / "Tr
 sections of `docs/ARCHITECTURE.md` for the full design. Summary:
 
 - **Where the malicious code enters:** entirely through `packages/exportkit-malicious`'s own
-  `to_csv`/`to_json` functions — nothing in `services/processing-service/app.py` was edited to
-  accommodate it (`services/processing-service/tests/test_supply_chain.py` swaps it in purely at
-  the Python-import level, simulating an approved-but-compromised package update).
-- **What it could access:** it attempts to read `RESEARCH_WORKSPACE_JWT_SECRET` from the process
-  environment (something a pure data-formatting library has no documented reason to ever touch)
-  and smuggle it into the exported content as an extra field — chosen because leaking the shared
-  signing secret would let an attacker forge authority tokens for every service in the system, the
-  highest-impact thing reachable from inside the Processing Service's own process/environment in
-  this architecture. What the compromised package can reach, given the Processing Service's actual
-  credentials and deployment (read from `docker-compose.yml` and `services/processing-service/`,
-  not measured by a test): the process environment (including the shared JWT secret, which the
-  Processing Service legitimately needs to mint its own worker tokens), outbound network access on
-  the compose network (so the Resource Service's HTTP API at `resource-service:5002`), and the
-  Processing Service container's own filesystem. It has **no** volume or file access to the
-  Resource Service's SQLite database (separate container, no shared volume), so direct database
-  access is not possible.
-- **Residual risk (be explicit about what is *not* contained):** the output validation below blocks
-  one exfiltration channel — smuggling the secret out through the export content. It does not stop
+  `to_csv`/`to_json` functions, i.e. through the package installation path — nothing in
+  `services/processing-service/app.py` was edited to accommodate it. In Experiment B the wheel is
+  installed by the normal Dockerfile after the consumer explicitly approves its identity and digest.
+- **Experiment B (implemented and run: `python scripts/experiment_b.py`, evidence in
+  `artifacts/experiment-b/`).** An isolated docker-compose project (own network, host ports
+  6001-6003) models a compromised supplier release that the consumer then accepts:
+  1. *Explicit approval.* The real manifest rejects the malicious wheel; the separate
+     `manifest/experiment_b/approved_packages.json` approves its name, version and sha256, so the
+     install-time gate admits it in this run only (`step1-approval.txt`).
+  2. *Normal workflow, before the boundary* (`before-boundary.json`). The Processing Service as it
+     was before output validation existed (commit `0fca8b3`) plus the approved malicious wheel:
+     alice's ordinary export through the Application API returns HTTP 201 and its content contains
+     an extra `_leaked_secret` column holding `RESEARCH_WORKSPACE_JWT_SECRET`; the same secret is
+     also stored in the Resource Service. The unauthorized access **succeeded**; this file is the
+     preserved evidence.
+  3. *Boundary corrected, run repeated* (`after-boundary.json`). The current Processing Service,
+     whose `validate_export_output` re-parses what `exportkit` actually produced and rejects any
+     field beyond the authorized record's keys, with the same approved malicious wheel: the export is
+     refused (HTTP 422), the secret is not in the response and nothing is stored.
+  4. *Legitimate job still completes* (`benign-control.json`): current code plus the real benign
+     wheel returns HTTP 201 with no extra field.
+  The check is on the dependency's **output**, not its filename or version (the brief is explicit
+  that the latter "is not a sufficient runtime defence" — the malicious wheel's name and version
+  are identical to the real one). Unit-level versions of the same checks are in
+  `services/processing-service/tests/test_supply_chain.py`.
+- **What the compromised component can access** (measured by a read-only probe run inside the
+  Processing Service container in each phase, `what_the_processing_service_container_can_reach` in
+  the JSON files): it runs as the non-root user `worker` (uid 999, set in the Dockerfile after this
+  experiment first showed uid 0); its environment holds `RESEARCH_WORKSPACE_JWT_SECRET` and
+  `RESOURCE_SERVICE_URL`; no Resource Service database file is visible; the only non-pseudo mounts
+  are Docker's `/etc/hosts`, `/etc/hostname` and `/etc/resolv.conf` (no volumes); it can reach the
+  Resource Service and Application API over HTTP (the Resource Service answers 401 to an
+  unauthenticated `/datasets`); and it can open outbound TCP connections to the internet.
+- **Residual risk (be explicit about what is *not* contained):** the output validation blocks one
+  exfiltration channel — smuggling the secret out through the export content. It does not stop
   malicious code that already runs inside the Processing Service process from using the shared
-  secret directly (e.g. forging an `admin` token and calling the Resource Service, or sending the
-  secret over the network). With a single shared HS256 secret that risk is inherent; the production
-  fix is per-service asymmetric keys, a Processing-Service-specific narrowed credential and egress
-  filtering (see "What would need to change for a production release" in `docs/ARCHITECTURE.md`).
-- **How it is contained (Experiment B, implemented, not just described):**
-  `services/processing-service/app.py::validate_export_output` re-parses whatever `exportkit`
-  actually produced and rejects the job (422) if it contains any field beyond the authorized
-  record's own keys — a real runtime check of the dependency's *output*, not of its filename or
-  declared version (the brief is explicit that the latter "is not a sufficient runtime defence" —
-  and indeed the malicious build's filename/version are byte-for-byte identical in metadata to the
-  real one). `services/processing-service/tests/test_supply_chain.py` proves, in order: (1) the
-  malicious fixture really does attempt the leak, (2) the leak is blocked and nothing poisoned
-  reaches the Resource Service, (3) the legitimate job still completes normally with the real,
-  benign dependency afterwards.
+  secret directly (it is in the process environment and the Resource Service is reachable) or from
+  sending it out over the network (outbound internet access is open). With a single shared HS256
+  secret that risk is inherent; the production fix is per-service asymmetric keys, a narrowed
+  Processing-Service credential and egress filtering (see "What would need to change for a
+  production release" in `docs/ARCHITECTURE.md`).
 - **Experiment A (install-time integrity gate, implemented):**
   `manifest/approved_packages.json` + `scripts/verify_manifest.py` pin the benign wheel's exact
   sha256, controlled by the consumer (this project), not the supplier. The gate is part of the

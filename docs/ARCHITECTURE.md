@@ -82,6 +82,7 @@ in practice, and it is also exactly the property V2's planted bug violated (see
   (`manifest/approved_packages.json`, checked by `scripts/verify_manifest.py` in the Docker build
   and in the Jenkins "Build & install" stage *before* `pip install`), and not trusted at runtime either — its output is
   validated before being saved/returned (`services/processing-service/app.py::validate_export_output`).
+  The Processing Service container runs as a non-root user (`worker`) because it executes this code.
 
 ## Roles and seeded accounts
 
