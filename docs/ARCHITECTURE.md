@@ -54,8 +54,11 @@ client). Two kinds of token exist:
      `["dataset:admin"]`, `["dataset:export"]`, `["job:export"]` — the receiving service checks
      the token carries a scope it requires before doing anything
    - **resource** → an optional `resource` claim binding the token to one specific dataset id
-     (used for `GET /datasets/<id>`, delete, and every export job) — this is the claim whose
-     absence/mismatch is what V4's fix (`docs/THREAT_MODEL.md`) now checks
+     (used for `GET /datasets/<id>`, delete, and every export job). It is enforced in two places:
+     the Resource Service rejects (403) a token whose `resource` claim differs from the dataset id
+     being read/deleted/exported (`services/resource-service/security.py::resource_claim_allows`),
+     and the Processing Service rejects an export job whose body `dataset_id` differs from the
+     claim — the check that is V4's fix (`docs/THREAT_MODEL.md`)
    - **validity period** → `exp`/`iat`, 60 seconds for service tokens — short enough that replaying
      a captured token after the fact is not useful, long enough to complete one request
 
@@ -74,9 +77,10 @@ in practice, and it is also exactly the property V2's planted bug violated (see
   request rather than assuming "it came from a trusted peer, so it's fine" — a deliberate
   zero-trust-within-the-cluster stance, not weakened just because the caller is "one of ours".
 - **Processing Service ↔ exportkit** — a supply-chain boundary. `exportkit` is treated as
-  externally supplied code: installed from a separately built artifact (not copied into
+  externally supplied code: installed from a separately built wheel (not copied into
   `services/processing-service/`), gated at install time by a digest manifest
-  (`manifest/approved_packages.json`), and not trusted at runtime either — its output is
+  (`manifest/approved_packages.json`, checked by `scripts/verify_manifest.py` in the Docker build
+  and in the Jenkins "Build & install" stage *before* `pip install`), and not trusted at runtime either — its output is
   validated before being saved/returned (`services/processing-service/app.py::validate_export_output`).
 
 ## Roles and seeded accounts

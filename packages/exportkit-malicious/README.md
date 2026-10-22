@@ -13,9 +13,9 @@ It is used in two ways in this repository:
    digest and shows it does NOT match the digest approved in
    `manifest/approved_packages.json`, even though name+version are identical — so the install-time
    integrity gate rejects it.
-2. **Controlled attack / Experiment B (runtime containment):** `tests/test_supply_chain.py`
+2. **Controlled attack / Experiment B (runtime containment):** `services/processing-service/tests/test_supply_chain.py`
    swaps it in for the real `exportkit` at the Python-import level (never by editing
    `services/processing-service/app.py`) and shows that even though its malicious code runs, the
-   Processing Service's output-validation check (see `app.py::_validate_export_output`) strips/
+   Processing Service's output-validation check (see `services/processing-service/app.py::validate_export_output`) strips/
    rejects what it tries to smuggle out, and confirms the legitimate job still completes normally
    with the real, benign dependency.

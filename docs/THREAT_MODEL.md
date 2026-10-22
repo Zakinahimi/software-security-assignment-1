@@ -22,13 +22,13 @@ time; nothing below is hypothetical.
 ### V1 — IDOR on `GET /datasets/<id>` (CWE-639)
 
 - **Component:** Resource Service.
-- **Planted:** [`d8e9e2a`](../../commit/d8e9e2a) — the endpoint checked the caller held the
+- **Planted:** `1dfd1d8` — the endpoint checked the caller held the
   `dataset:read` scope, but never checked `record.owner == token.sub`. Any authenticated user
   could read any other user's dataset by id.
 - **Exploit evidence:** `test_V1_idor_any_authenticated_user_can_read_another_users_dataset`
   (same commit) — bob, holding a legitimate token for himself, successfully reads alice's
   dataset.
-- **Fixed:** [`887dee0`](../../commit/887dee0) — added
+- **Fixed:** `cde57d6` — added
   `if record["owner"] != g.user["sub"] and g.user.get("role") != "admin": return 403`.
 - **Regression test:** `test_V1_idor_is_fixed_cross_owner_read_is_rejected` (+
   `test_V1_owner_can_still_read_their_own_dataset`, `test_V1_admin_can_still_read_any_dataset`
@@ -41,7 +41,7 @@ time; nothing below is hypothetical.
 ### V2 — JWT signature not verified (CWE-347)
 
 - **Component:** Application API.
-- **Planted:** [`64bab5e`](../../commit/64bab5e) —
+- **Planted:** `1ccefc1` —
   `decode_session_token_UNSAFE()` called `jwt.decode(token, options={"verify_signature": False})`.
   Because every downstream service token is minted *from* the identity this decode produces, a
   forged session token claiming `role: "admin"` resulted in the Application API minting a
@@ -52,7 +52,7 @@ time; nothing below is hypothetical.
   the second test decodes the token the Application API actually sent to the Resource Service,
   with the *real* secret, and shows it is validly signed and carries `sub: "mallory"`,
   `dataset:admin`.
-- **Fixed:** [`4ef088d`](../../commit/4ef088d) — `decode_session_token()` now verifies signature
+- **Fixed:** `5cdc098` — `decode_session_token()` now verifies signature
   (`algorithms=["HS256"]`, real secret), audience, and requires `exp/iat/sub/aud`.
 - **Regression test:** `test_V2_forged_admin_session_token_is_rejected` +
   `test_V2_forged_token_no_longer_escalates_to_a_downstream_admin_token` +
@@ -64,7 +64,7 @@ time; nothing below is hypothetical.
 ### V3 — SQL injection in dataset search (CWE-89)
 
 - **Component:** Resource Service.
-- **Planted:** [`d8e9e2a`](../../commit/d8e9e2a) —
+- **Planted:** `1dfd1d8` —
   `db.search_datasets()` bound `owner` as a parameter but concatenated the free-text `query`
   directly into the SQL string: `"... WHERE owner = ? AND name LIKE '%" + query + "%'"`.
 - **Exploit evidence:** `test_V3_sql_injection_bypasses_owner_filter_in_search` (same commit) —
@@ -72,7 +72,7 @@ time; nothing below is hypothetical.
   bob through an endpoint that is only supposed to return the caller's own. This is a
   SQL-injection-driven **authorization bypass**, not just a generic data leak, because the owner
   filter is exactly what the injection defeats.
-- **Fixed:** [`887dee0`](../../commit/887dee0) — both `owner` and the LIKE pattern are now bound
+- **Fixed:** `cde57d6` — both `owner` and the LIKE pattern are now bound
   as parameters.
 - **Regression test:** `test_V3_sql_injection_no_longer_bypasses_owner_filter` +
   `test_V3_sql_injection_payload_is_treated_as_literal_text`. Re-verified end-to-end in
@@ -92,7 +92,7 @@ cannot exist in a single-process version of this application.
   token for calls to the Resource Service (`security.mint_resource_service_worker_token`), rather
   than reusing the end user's own (much narrower) identity. That is itself a least-privilege
   trade-off, discussed below and in the report — the real bug is what happens next.
-- **Planted:** [`9a3fc5b`](../../commit/9a3fc5b) — `POST /jobs/export` read `dataset_id` straight
+- **Planted:** `d0303b2` — `POST /jobs/export` read `dataset_id` straight
   from the request body to decide which dataset to fetch with that elevated credential, instead
   of from `g.user["resource"]` — the dataset id the Application API actually bound into *this
   specific, signed* job token.
@@ -107,7 +107,7 @@ cannot exist in a single-process version of this application.
   that matters for V4 has to live in the Processing Service itself, because it's the only
   component that knows both "what this specific token actually authorizes" and "what job
   parameters it's about to act on."
-- **Fixed:** [`50e7024`](../../commit/50e7024) — requires `g.user["resource"]` to be present and
+- **Fixed:** `0fca8b3` — requires `g.user["resource"]` to be present and
   equal to `body["dataset_id"]`, rejecting with 403 otherwise, *before* minting/using the elevated
   worker credential.
 - **Regression test:** `test_V4_confused_deputy_export_is_now_rejected` +
@@ -185,9 +185,21 @@ sections of `docs/ARCHITECTURE.md` for the full design. Summary:
   and smuggle it into the exported content as an extra field — chosen because leaking the shared
   signing secret would let an attacker forge authority tokens for every service in the system, the
   highest-impact thing reachable from inside the Processing Service's own process/environment in
-  this architecture. It does **not** have filesystem/network access to the Resource Service's
-  database (separate container, no shared volume) — containment by architecture, confirmed rather
-  than assumed, is itself part of the experiment's evidence.
+  this architecture. What the compromised package can reach, given the Processing Service's actual
+  credentials and deployment (read from `docker-compose.yml` and `services/processing-service/`,
+  not measured by a test): the process environment (including the shared JWT secret, which the
+  Processing Service legitimately needs to mint its own worker tokens), outbound network access on
+  the compose network (so the Resource Service's HTTP API at `resource-service:5002`), and the
+  Processing Service container's own filesystem. It has **no** volume or file access to the
+  Resource Service's SQLite database (separate container, no shared volume), so direct database
+  access is not possible.
+- **Residual risk (be explicit about what is *not* contained):** the output validation below blocks
+  one exfiltration channel — smuggling the secret out through the export content. It does not stop
+  malicious code that already runs inside the Processing Service process from using the shared
+  secret directly (e.g. forging an `admin` token and calling the Resource Service, or sending the
+  secret over the network). With a single shared HS256 secret that risk is inherent; the production
+  fix is per-service asymmetric keys, a Processing-Service-specific narrowed credential and egress
+  filtering (see "What would need to change for a production release" in `docs/ARCHITECTURE.md`).
 - **How it is contained (Experiment B, implemented, not just described):**
   `services/processing-service/app.py::validate_export_output` re-parses whatever `exportkit`
   actually produced and rejects the job (422) if it contains any field beyond the authorized
@@ -200,7 +212,13 @@ sections of `docs/ARCHITECTURE.md` for the full design. Summary:
   benign dependency afterwards.
 - **Experiment A (install-time integrity gate, implemented):**
   `manifest/approved_packages.json` + `scripts/verify_manifest.py` pin the benign wheel's exact
-  sha256, controlled by the consumer (this project), not the supplier. The malicious wheel
+  sha256, controlled by the consumer (this project), not the supplier. The gate is part of the
+  installation path itself: the Processing Service `Dockerfile` and the Jenkins "Build & install"
+  stage run `verify_manifest.py` on the wheel and only then `pip install` it, so a mismatch fails
+  the build (`artifacts/docker-build-malicious-wheel-rejected.txt` is the saved evidence of a
+  Docker build being refused with the malicious wheel in place;
+  `services/processing-service/tests/test_supply_chain.py` also rewrites the approved wheel's
+  bytes while keeping its name and version and shows the digest check rejects it). The malicious wheel
   declares the identical name+version but a different digest and is rejected
   (`python scripts/verify_manifest.py packages/exportkit-malicious/dist/*.whl` exits 1 — see
   README.md for the exact command and `packages/*/dist/` for the two committed wheels used).
