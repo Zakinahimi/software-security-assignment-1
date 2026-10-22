@@ -2,7 +2,7 @@
 """Experiment A — install-time integrity gate for the external `exportkit` dependency.
 
 Usage:
-    python scripts/verify_manifest.py <path-to-wheel>
+    python scripts/verify_manifest.py <path-to-wheel> [--manifest <path-to-manifest.json>]
 
 Exits 0 and prints "APPROVED" if the wheel's package name, version and sha256 content digest all
 match an entry in manifest/approved_packages.json (controlled by the CONSUMER — this project —
@@ -16,9 +16,9 @@ sha256 without being byte-for-byte the approved artifact.
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
-import sys
 import zipfile
 from pathlib import Path
 
@@ -53,11 +53,11 @@ def read_wheel_identity(path: Path) -> tuple[str, str]:
     return name, version
 
 
-def verify(wheel_path: Path) -> tuple[bool, str]:
+def verify(wheel_path: Path, manifest_path: Path = MANIFEST_PATH) -> tuple[bool, str]:
     if not wheel_path.exists():
         return False, f"REJECTED: no such file: {wheel_path}"
 
-    manifest = json.loads(MANIFEST_PATH.read_text())["packages"]
+    manifest = json.loads(Path(manifest_path).read_text())["packages"]
 
     name, version = read_wheel_identity(wheel_path)
     entry = manifest.get(name)
@@ -79,10 +79,16 @@ def verify(wheel_path: Path) -> tuple[bool, str]:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: python scripts/verify_manifest.py <path-to-wheel>", file=sys.stderr)
-        return 2
-    ok, message = verify(Path(sys.argv[1]))
+    parser = argparse.ArgumentParser(description="Verify a wheel against the consumer-held approval manifest.")
+    parser.add_argument("wheel", type=Path)
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=MANIFEST_PATH,
+        help="approval manifest to check against (default: manifest/approved_packages.json)",
+    )
+    args = parser.parse_args()
+    ok, message = verify(args.wheel, args.manifest)
     print(message)
     return 0 if ok else 1
 
