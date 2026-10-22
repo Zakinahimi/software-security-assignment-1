@@ -110,3 +110,25 @@ dependency set, and any integrity-manifest mismatch for `exportkit` (supply-chai
 
 Account self-registration UI, graphical interface, real payment/email delivery, public hosting,
 high availability, large-scale performance.
+
+## 9. Deviations between this initial plan and what was actually built
+
+The plan above is kept as it was committed (before any feature code). Where the implementation
+differs, it is recorded here rather than rewritten into the plan:
+
+- **Exploit-test commits.** The plan (section 4) describes a separate, initially failing
+  exploit-test commit between planting and fixing. In practice each vulnerability was planted
+  together with a *passing* test that demonstrates the exploit working (V1+V3 `1dfd1d8`, V2
+  `1ccefc1`, V4 `d0303b2`), and the later fix commit (`cde57d6`, `5cdc098`, `0fca8b3`) rewrites that
+  test to assert the secure behaviour. So the history is plant+exploit-test → fix, two commits per
+  vulnerability, not three.
+- **`pip-audit` severity.** Section 7 says the build fails on findings "of severity ≥ medium".
+  `pip-audit` does not report severities, so the implemented gate fails on *any* reported known
+  vulnerability in the pinned service dependencies.
+- **Manifest check location.** Section 6 places the manifest check in CI. It was later also moved
+  into the installation path itself (Processing Service `Dockerfile` and the Jenkins "Build &
+  install" stage verify the wheel before `pip install`), so an unapproved artifact is rejected at
+  install time and not only by a separate CI step.
+- **Resource-claim enforcement.** The `resource` token claim was first checked only by the
+  Processing Service (V4 fix). The Resource Service now also rejects a token whose `resource`
+  claim differs from the dataset being read, deleted or exported.
