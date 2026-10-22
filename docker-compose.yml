@@ -70,6 +70,6 @@ services:
     depends_on:
       application-api:
         condition: service_healthy
-    volumes:
-      - ./reports:/reports
+    # No bind mount for the results: the JUnit XML is copied out with `docker cp` (see README and
+    # the Jenkinsfile), which also works when the pipeline itself runs inside a container.
     profiles: ["test"]

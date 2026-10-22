@@ -139,7 +139,11 @@ pipeline {
                     mkdir -p reports
                     docker compose up --build -d resource-service processing-service application-api
                     docker compose --profile test build test-runner
-                    docker compose --profile test run --rm test-runner
+                    rc=0
+                    docker compose --profile test run --name e2e-runner test-runner || rc=$?
+                    docker cp e2e-runner:/reports/e2e-results.xml reports/e2e-results.xml || true
+                    docker rm -f e2e-runner || true
+                    exit $rc
                 '''
             }
             post {

@@ -6,4 +6,5 @@ WORKDIR /work
 COPY requirements-dev.txt .
 RUN pip install --no-cache-dir -r requirements-dev.txt pyjwt==2.8.0
 COPY tests/ tests/
+RUN mkdir -p /reports
 CMD ["pytest", "-q", "tests/", "--junitxml=/reports/e2e-results.xml"]
