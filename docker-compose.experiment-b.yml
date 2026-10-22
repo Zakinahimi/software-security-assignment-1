@@ -1,0 +1,57 @@
+# Experiment B: isolated environment (own compose project, own network, own host ports 6001-6003)
+# used only by scripts/experiment_b.py. The Processing Service image is chosen per phase through
+# PROCESSING_IMAGE (see the script); resource-service and application-api are the normal ones.
+x-jwt-secret: &jwt-secret
+  RESEARCH_WORKSPACE_JWT_SECRET: "dev-only-shared-secret-change-me-32bytes!!"
+
+services:
+  resource-service:
+    build:
+      context: .
+      dockerfile: services/resource-service/Dockerfile
+    environment:
+      <<: *jwt-secret
+    ports:
+      - "6002:5002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  processing-service:
+    image: ${PROCESSING_IMAGE}
+    environment:
+      <<: *jwt-secret
+      RESOURCE_SERVICE_URL: "http://resource-service:5002"
+    ports:
+      - "6003:5003"
+    depends_on:
+      resource-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5003/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  application-api:
+    build:
+      context: .
+      dockerfile: services/application-api/Dockerfile
+    environment:
+      <<: *jwt-secret
+      RESOURCE_SERVICE_URL: "http://resource-service:5002"
+      PROCESSING_SERVICE_URL: "http://processing-service:5003"
+    ports:
+      - "6001:5001"
+    depends_on:
+      resource-service:
+        condition: service_healthy
+      processing-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 10

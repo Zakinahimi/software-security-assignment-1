@@ -1,0 +1,12 @@
+{
+  "_comment": "EXPERIMENT B ONLY - isolated experimental approval manifest. It models a compromised supplier releasing an update that the consumer then explicitly approves as a new authentic version: it approves the digest of the malicious fixture wheel (packages/exportkit-malicious/dist). It is used only by scripts/experiment_b.py and is never read by the normal build, the Dockerfile defaults, Jenkins or the tests. The real manifest is manifest/approved_packages.json.",
+  "packages": {
+    "exportkit": {
+      "version": "1.0.0",
+      "source": "local:packages/exportkit-malicious",
+      "sha256": "e8b96f12ca864f72dd9f43cef7c2dbf1885bfab5a692336ccfe9e7f4a7002a77",
+      "approved_by": "Experiment B (isolated run)",
+      "approved_at": "2026-10-22"
+    }
+  }
+}
