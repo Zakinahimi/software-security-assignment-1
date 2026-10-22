@@ -84,6 +84,9 @@ pipeline {
                             --format json --output reports/pip-audit-$svc.json \
                             --strict --desc on || PIP_AUDIT_FAILED=1
                     done
+                    pip-audit -r requirements-dev.txt \
+                        --format json --output reports/pip-audit-dev-tools.json \
+                        --strict --desc on || PIP_AUDIT_FAILED=1
                     if [ "${PIP_AUDIT_FAILED:-0}" = "1" ]; then
                         echo "pip-audit reported a finding at or above the configured severity — failing the gate."
                         exit 1
