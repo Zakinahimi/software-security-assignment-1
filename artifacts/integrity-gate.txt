@@ -1,0 +1,10 @@
+# benign wheel
+APPROVED: exportkit==1.0.0 matches the manifest (sha256=d8155bb9b7bd8a153b47931af0e95a396aa75a4592aabd92b0229ffc53486b71)
+exit=0
+
+# malicious fixture wheel
+REJECTED: digest mismatch for exportkit==1.0.0
+  approved sha256: d8155bb9b7bd8a153b47931af0e95a396aa75a4592aabd92b0229ffc53486b71
+  actual   sha256: e8b96f12ca864f72dd9f43cef7c2dbf1885bfab5a692336ccfe9e7f4a7002a77
+  (name and version matched — this looks like a tampered/compromised artifact, not a typo)
+exit=1

@@ -1,0 +1,9 @@
+# docker build of the processing-service image with the MALICIOUS wheel placed in packages/exportkit/dist (build context copy; repo untouched)
+#12 0.094 REJECTED: digest mismatch for exportkit==1.0.0
+#12 0.094   approved sha256: d8155bb9b7bd8a153b47931af0e95a396aa75a4592aabd92b0229ffc53486b71
+#12 0.094   actual   sha256: e8b96f12ca864f72dd9f43cef7c2dbf1885bfab5a692336ccfe9e7f4a7002a77
+#12 ERROR: process "/bin/sh -c python /build/scripts/verify_manifest.py /build/wheels/*.whl     && pip install --no-cache-dir --no-deps /build/wheels/*.whl     && rm -rf /build" did not complete successfully: exit code: 1
+0.094 REJECTED: digest mismatch for exportkit==1.0.0
+0.094   approved sha256: d8155bb9b7bd8a153b47931af0e95a396aa75a4592aabd92b0229ffc53486b71
+0.094   actual   sha256: e8b96f12ca864f72dd9f43cef7c2dbf1885bfab5a692336ccfe9e7f4a7002a77
+ERROR: failed to solve: process "/bin/sh -c python /build/scripts/verify_manifest.py /build/wheels/*.whl     && pip install --no-cache-dir --no-deps /build/wheels/*.whl     && rm -rf /build" did not complete successfully: exit code: 1
