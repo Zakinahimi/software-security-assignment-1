@@ -50,21 +50,22 @@ User (CLI / curl) ──▶ Application API (:5001) ──▶ Resource Service (
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt          # shared dev/test tooling (pytest, ruff, pip-audit, requests)
-pip install packages/exportkit               # install the external dependency (benign build)
+python scripts/verify_manifest.py packages/exportkit/dist/*.whl   # integrity gate: must print APPROVED
+pip install --no-deps packages/exportkit/dist/*.whl               # install the external dependency (benign wheel)
 for svc in application-api resource-service processing-service; do
   pip install -r services/$svc/requirements.txt
 done
 ```
 
-### 2. Run the three services (each in its own terminal, or see `scripts/run_dev.sh`)
+### 2. Seed and run the three services (each in its own terminal, or see `scripts/run_dev.sh`)
 
 ```bash
-./scripts/run_dev.sh          # starts all three with seeded SQLite data, foreground logs interleaved
+python scripts/seed.py        # (re)creates both SQLite stores with the seeded accounts/datasets
+./scripts/run_dev.sh          # starts all three; each service also re-seeds its own store on start
 ```
 
 This seeds three accounts: `alice` / `Alice#Pass1` (user), `bob` / `Bob#Pass1` (user),
-`admin` / `Admin#Pass1` (admin), each from `scripts/seed.py` (also run automatically on first
-start of each service).
+`admin` / `Admin#Pass1` (admin), plus synthetic datasets for alice (ids 1, 2) and bob (id 3).
 
 ### 3. Use the command-line client
 
@@ -102,7 +103,7 @@ the first service's cached module instead of their own):
 
 ```bash
 for svc in resource-service application-api processing-service; do
-  (cd services/$svc && python -m pytest -q)         # 12 / 11 / 10 tests respectively
+  (cd services/$svc && python -m pytest -q)         # 15 / 11 / 13 tests respectively
 done
 ```
 
@@ -111,7 +112,7 @@ tests, run against three **real, running** instances of the services (either fro
 docker-compose stack):
 
 ```bash
-pytest -q tests/
+pytest -q tests/                                    # 8 end-to-end tests
 ```
 
 ### 5. Run everything in Docker (fresh environment — what Jenkins does)
@@ -154,8 +155,24 @@ done
 `Jenkinsfile` runs on every push/PR: build & install → static analysis (`ruff`) → dependency
 analysis (`pip-audit`) → supply-chain integrity gate (`scripts/verify_manifest.py`) → per-service
 unit tests → a fresh docker-compose environment running the functional/authorization test suite.
-It fails the build on any failing test, any pip-audit finding, or an unexpected integrity-gate
-result, and archives all reports under `reports/` as Jenkins artifacts.
+It fails the build on any failing test, any ruff finding, any pip-audit finding (pip-audit has no
+severity threshold, so every finding blocks), a broken dependency set (`pip check`), or an
+unexpected integrity-gate result, and archives all reports under `reports/` as Jenkins artifacts.
+The wheel is verified against the manifest *before* it is installed (both in the Jenkins
+"Build & install" stage and in the Processing Service `Dockerfile`).
+
+Note: the `Jenkinsfile` has not been executed on a Jenkins server from this repository (no Jenkins
+instance was available); every command it runs was executed by hand with the results saved in
+`artifacts/` (see below). It is meant to be used as a Multibranch Pipeline job so that it runs on
+every push and pull request.
+
+## Saved test and analysis results (`artifacts/`)
+
+Results of the last full run (the same commands the pipeline runs): per-service JUnit XML
+(`unit-*.xml`), the end-to-end JUnit XML from the docker-compose stack (`e2e-results-docker.xml`),
+`ruff.txt`, `pip-audit-*.json`, `integrity-gate.txt` (benign wheel APPROVED, malicious wheel
+REJECTED) and `docker-build-malicious-wheel-rejected.txt` (the Processing Service image build
+refusing the malicious wheel). `reports/` is where a fresh run writes its output and is git-ignored.
 
 ## Repository contents checklist (per the assignment's Submission section)
 
@@ -165,4 +182,5 @@ result, and archives all reports under `reports/` as Jenkins artifacts.
 - [x] Jenkins pipeline definition (`Jenkinsfile`)
 - [x] Helper package + malicious version + approval manifest (`packages/exportkit*`, `manifest/approved_packages.json`)
 - [x] Written report (`docs/report/Assignment_I_Report.docx`)
-- [x] AI usage declaration (`docs/AI_USE_DECLARATION.md`)
+- [x] AI usage declaration (`docs/AI_USE_DECLARATION.md`, following the AU GAI declaration form)
+- [x] Saved test and analysis results (`artifacts/`)
