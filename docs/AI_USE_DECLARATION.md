@@ -61,7 +61,10 @@ token design. These are the authors' own work; GAI did not generate them.
    tests. This led to concrete corrections that the assistant made and the authors reviewed: the
    Resource Service now enforces the token's `resource` claim (with tests); the `exportkit` wheel
    is verified against the approval manifest before installation in the Dockerfile and the
-   Jenkins pipeline (with tests); a broken `search` command was removed from the CLI client; the
+   Jenkins pipeline (with tests); Experiment B was implemented as written in the brief
+   (`scripts/experiment_b.py`, an isolated docker-compose environment and a separate approval
+   manifest) and its results saved; the Processing Service container now runs as a non-root user;
+   dataset payloads are stored as JSON; a broken `search` command was removed from the CLI client; the
    `artifacts/` folder with saved test and analysis results was added; and statements in the docs
    and the report that did not match the code were corrected (for example the description of what
    the output validation does and does not contain in the supply-chain experiment, the commit
